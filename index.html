@@ -480,6 +480,17 @@
             vertical-align: middle;
             fill: currentColor;
         }
+
+        /* Style for the "Show More/Less" button */
+        .show-more-less-btn {
+            margin-top: 15px;
+            width: auto;
+            padding: 8px 15px;
+            background-color: #6c757d; /* A neutral color */
+        }
+        .show-more-less-btn:hover {
+            background-color: #5a6268;
+        }
     </style>
 </head>
 <body>
@@ -598,9 +609,11 @@
         const modalImage = document.getElementById('modalImage');
         const modalCloseBtn = imageModal.querySelector('.modal-close-btn');
 
+        const MAX_IMAGES_PER_ALBUM_PREVIEW = 6; // Số lượng ảnh hiển thị ban đầu trong album
+
         let db; // IndexedDB database instance
-        let albums = {}; // Global object to hold album data from DB
-        let albumCollapseStates = {}; // Global object to hold collapse states from DB
+        // albumsData sẽ lưu trữ các đối tượng album đầy đủ từ IndexedDB
+        let albumsData = {}; // Stores { [albumName]: { name: string, images: string[], collapsed: boolean, expandedView: boolean } }
         let currentCapturedImage = null; // Stores the base64 image data temporarily
 
         const DB_NAME = 'WebAlbumDB';
@@ -643,13 +656,14 @@
                 const request = store.getAll();
 
                 request.onsuccess = (event) => {
-                    const fetchedAlbums = {};
-                    const fetchedCollapseStates = {};
+                    const fetchedAlbumsMap = {};
                     event.target.result.forEach(album => {
-                        fetchedAlbums[album.name] = album.images;
-                        fetchedCollapseStates[album.name] = album.collapsed;
+                        // Ensure default values for new properties if old data exists
+                        if (album.collapsed === undefined) album.collapsed = false;
+                        if (album.expandedView === undefined) album.expandedView = false;
+                        fetchedAlbumsMap[album.name] = album;
                     });
-                    resolve({ albums: fetchedAlbums, collapseStates: fetchedCollapseStates });
+                    resolve(fetchedAlbumsMap);
                 };
 
                 request.onerror = (event) => {
@@ -706,31 +720,35 @@
             const localStorageAlbums = localStorage.getItem('albums');
             const localStorageCollapseStates = localStorage.getItem('albumCollapseStates');
 
-            if (localStorageAlbums && localStorage.getItem('migratedToIndexedDB') !== 'true') {
-                try {
-                    const oldAlbums = JSON.parse(localStorageAlbums);
-                    const oldCollapseStates = JSON.parse(localStorageCollapseStates || '{}');
-                    
-                    const albumNames = Object.keys(oldAlbums);
-                    if (albumNames.length > 0) {
-                        showNotification('Đang di chuyển dữ liệu cũ sang IndexedDB...', 'info');
-                        for (const name of albumNames) {
-                            const albumData = {
-                                name: name,
-                                collapsed: oldCollapseStates[name] || false,
-                                images: oldAlbums[name]
-                            };
-                            await saveAlbumToDB(albumData);
-                        }
-                        localStorage.setItem('migratedToIndexedDB', 'true');
-                        localStorage.removeItem('albums'); // Clear old localStorage data
-                        localStorage.removeItem('albumCollapseStates'); // Clear old localStorage data
-                        showNotification('Di chuyển dữ liệu thành công!', 'success');
+            // Check if migration has already happened or no old data exists
+            if (localStorage.getItem('migratedToIndexedDB') === 'true' || !localStorageAlbums) {
+                return;
+            }
+
+            try {
+                const oldAlbums = JSON.parse(localStorageAlbums);
+                const oldCollapseStates = JSON.parse(localStorageCollapseStates || '{}');
+                
+                const albumNames = Object.keys(oldAlbums);
+                if (albumNames.length > 0) {
+                    showNotification('Đang di chuyển dữ liệu cũ sang IndexedDB...', 'info');
+                    for (const name of albumNames) {
+                        const albumData = {
+                            name: name,
+                            collapsed: oldCollapseStates[name] || false,
+                            images: oldAlbums[name],
+                            expandedView: false // Default to not expanded for migrated albums
+                        };
+                        await saveAlbumToDB(albumData);
                     }
-                } catch (e) {
-                    console.error('Lỗi khi di chuyển dữ liệu từ localStorage:', e);
-                    showNotification('Lỗi khi di chuyển dữ liệu cũ!', 'error');
+                    localStorage.setItem('migratedToIndexedDB', 'true');
+                    localStorage.removeItem('albums'); // Clear old localStorage data
+                    localStorage.removeItem('albumCollapseStates'); // Clear old localStorage data
+                    showNotification('Di chuyển dữ liệu thành công!', 'success');
                 }
+            } catch (e) {
+                console.error('Lỗi khi di chuyển dữ liệu từ localStorage:', e);
+                showNotification('Lỗi khi di chuyển dữ liệu cũ!', 'error');
             }
         }
 
@@ -739,11 +757,13 @@
             if (isLoading) {
                 button.disabled = true;
                 button.classList.add('loading');
+                // Store original HTML to restore later
                 button.dataset.originalHtml = button.innerHTML; 
                 button.innerHTML = '<div class="spinner"></div> Đang xử lý...';
             } else {
                 button.disabled = false;
                 button.classList.remove('loading');
+                // Restore original HTML
                 if (button.dataset.originalHtml) {
                     button.innerHTML = button.dataset.originalHtml;
                     delete button.dataset.originalHtml;
@@ -813,7 +833,7 @@
         function renderAlbums() {
             albumSelect.innerHTML = '';
             albumsGrid.innerHTML = '';
-            const albumNames = Object.keys(albums);
+            const albumNames = Object.keys(albumsData); // Use albumsData
             noAlbumsMessage.style.display = albumNames.length === 0 ? 'block' : 'none';
 
             saveImageBtn.disabled = !currentCapturedImage || albumNames.length === 0;
@@ -825,29 +845,29 @@
                     if (firstAlbumName === null) {
                         firstAlbumName = name;
                     }
+                    const album = albumsData[name]; // Get the full album object
+
                     const option = document.createElement('option');
-                    option.value = name;
-                    option.textContent = name;
+                    option.value = album.name;
+                    option.textContent = album.name;
                     albumSelect.appendChild(option);
 
                     const albumCard = document.createElement('div');
                     albumCard.className = 'album-card';
-                    albumCard.dataset.albumName = name; // Store album name for deletion
+                    albumCard.dataset.albumName = album.name;
 
-                    // Check collapse state, default to expanded if not set
-                    const isCollapsed = albumCollapseStates[name] === true;
-                    if (isCollapsed) {
+                    if (album.collapsed) { // Use album.collapsed
                         albumCard.classList.add('collapsed');
                     }
 
                     albumCard.innerHTML = `
                         <div class="album-header-row">
-                            <h3>${name}</h3>
-                            <button class="toggle-collapse-btn" data-album-name="${name}">
+                            <h3>${album.name}</h3>
+                            <button class="toggle-collapse-btn" data-album-name="${album.name}">
                                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                             </button>
                         </div>
-                        <button class="delete-album-btn" data-album-name="${name}">
+                        <button class="delete-album-btn" data-album-name="${album.name}">
                             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
                             Xóa album
                         </button>
@@ -858,27 +878,40 @@
                     `;
                     const albumContentDiv = albumCard.querySelector('.album-content');
 
-                    if (albums[name].length === 0) {
+                    if (album.images.length === 0) {
                         const noPhotosText = document.createElement('p');
                         noPhotosText.className = 'placeholder-text';
                         noPhotosText.textContent = 'Chưa có ảnh nào trong album này.';
                         albumContentDiv.appendChild(noPhotosText);
                     } else {
-                        albums[name].forEach((imgData, index) => {
+                        // Determine how many images to show based on expandedView state
+                        const imagesToShow = album.expandedView ? album.images.length : Math.min(album.images.length, MAX_IMAGES_PER_ALBUM_PREVIEW);
+
+                        for (let i = 0; i < imagesToShow; i++) {
+                            const imgData = album.images[i];
                             const imageWrapper = document.createElement('div');
                             imageWrapper.className = 'image-wrapper';
-                            imageWrapper.draggable = true; // Make images draggable
-                            imageWrapper.dataset.albumName = name;
-                            imageWrapper.dataset.imageIndex = index; // Store original index
+                            imageWrapper.draggable = true;
+                            imageWrapper.dataset.albumName = album.name;
+                            imageWrapper.dataset.imageIndex = i;
 
                             imageWrapper.innerHTML = `
-                                <img src="${imgData}" alt="Ảnh trong album ${name} ${index + 1}">
-                                <button class="delete-image-btn" data-album-name="${name}" data-image-index="${index}">
+                                <img src="${imgData}" alt="Ảnh trong album ${album.name} ${i + 1}">
+                                <button class="delete-image-btn" data-album-name="${album.name}" data-image-index="${i}">
                                     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
                                 </button>
                             `;
                             albumContentDiv.appendChild(imageWrapper);
-                        });
+                        }
+
+                        // Add "Show More/Less" button if needed
+                        if (album.images.length > MAX_IMAGES_PER_ALBUM_PREVIEW) {
+                            const showMoreBtn = document.createElement('button');
+                            showMoreBtn.className = 'button show-more-less-btn';
+                            showMoreBtn.dataset.albumName = album.name;
+                            showMoreBtn.innerHTML = album.expandedView ? 'Thu gọn ảnh' : 'Xem thêm ảnh';
+                            albumContentDiv.appendChild(showMoreBtn);
+                        }
                     }
                     albumsGrid.appendChild(albumCard);
                 }
@@ -916,26 +949,36 @@
                 modalImage.src = event.target.src;
                 imageModal.classList.add('show');
             }
-            // Toggle Collapse
+            // Toggle Collapse (for the entire album card)
             if (event.target.closest('.toggle-collapse-btn')) {
                 const btn = event.target.closest('.toggle-collapse-btn');
                 const albumName = btn.dataset.albumName;
                 const albumCard = btn.closest('.album-card');
                 
                 albumCard.classList.toggle('collapsed');
-                albumCollapseStates[albumName] = albumCard.classList.contains('collapsed');
+                albumsData[albumName].collapsed = albumCard.classList.contains('collapsed'); // Update in albumsData
                 
-                // Update collapse state in DB
-                const albumData = {
-                    name: albumName,
-                    collapsed: albumCollapseStates[albumName],
-                    images: albums[albumName] // Keep existing images
-                };
                 try {
-                    await saveAlbumToDB(albumData);
+                    await saveAlbumToDB(albumsData[albumName]); // Save the updated album object
                 } catch (e) {
-                    showNotification('Lỗi khi lưu trạng thái thu gọn!', 'error');
+                    showNotification('Lỗi khi lưu trạng thái thu gọn album!', 'error');
                     console.error('Error saving collapse state:', e);
+                }
+            }
+
+            // New: Toggle Show More/Less Images within an album
+            if (event.target.classList.contains('show-more-less-btn')) {
+                const btn = event.target;
+                const albumName = btn.dataset.albumName;
+                
+                albumsData[albumName].expandedView = !albumsData[albumName].expandedView; // Toggle expandedView
+                
+                try {
+                    await saveAlbumToDB(albumsData[albumName]); // Save the updated album object
+                    renderAlbums(); // Re-render to reflect the new image display state
+                } catch (e) {
+                    showNotification('Lỗi khi thay đổi chế độ xem ảnh!', 'error');
+                    console.error('Error toggling expanded view:', e);
                 }
             }
         });
@@ -987,17 +1030,13 @@
 
                 // Only allow reordering within the same album
                 if (srcAlbumName === targetAlbumName) {
-                    const albumImages = albums[srcAlbumName];
+                    const albumImages = albumsData[srcAlbumName].images; // Get images from albumsData
                     const [draggedImage] = albumImages.splice(srcIndex, 1); // Remove from source
                     albumImages.splice(targetIndex, 0, draggedImage); // Insert at target
 
-                    const albumData = {
-                        name: srcAlbumName,
-                        collapsed: albumCollapseStates[srcAlbumName],
-                        images: albumImages
-                    };
+                    const albumData = albumsData[srcAlbumName]; // Get the updated album object
                     try {
-                        await saveAlbumToDB(albumData);
+                        await saveAlbumToDB(albumData); // Save the updated album object
                         await loadAlbumsAndRender(); // Re-render to reflect new order and update data-image-index
                         showNotification('Đã sắp xếp ảnh thành công!', 'success');
                     } catch (e) {
@@ -1023,12 +1062,13 @@
         createAlbumBtn.onclick = async () => {
             const name = newAlbumNameInput.value.trim();
             if (name) {
-                if (!albums[name]) {
+                if (!albumsData[name]) { // Check against albumsData
                     setButtonLoading(createAlbumBtn, true);
                     const newAlbumData = {
                         name: name,
                         collapsed: false, // New album is expanded by default
-                        images: []
+                        images: [],
+                        expandedView: false // New album is not expanded view by default
                     };
                     try {
                         await saveAlbumToDB(newAlbumData);
@@ -1051,13 +1091,9 @@
         };
 
         async function deleteImage(albumName, imageIndex) {
-            if (albums[albumName] && albums[albumName].length > imageIndex) {
-                albums[albumName].splice(imageIndex, 1);
-                const albumData = {
-                    name: albumName,
-                    collapsed: albumCollapseStates[albumName],
-                    images: albums[albumName]
-                };
+            if (albumsData[albumName] && albumsData[albumName].images.length > imageIndex) {
+                albumsData[albumName].images.splice(imageIndex, 1); // Update images in albumsData
+                const albumData = albumsData[albumName]; // Get the updated album object
                 try {
                     await saveAlbumToDB(albumData);
                     await loadAlbumsAndRender(); // Reload and render all albums
@@ -1070,12 +1106,13 @@
         }
 
         async function deleteAlbum(albumName) {
-            if (albums[albumName]) {
+            if (albumsData[albumName]) { // Check against albumsData
                 try {
                     await deleteAlbumFromDB(albumName);
+                    delete albumsData[albumName]; // Remove from global state
                     // If the deleted album was selected, clear selection or select first available
                     if (albumSelect.value === albumName) {
-                        albumSelect.value = Object.keys(albums).length > 0 ? Object.keys(albums)[0] : '';
+                        albumSelect.value = Object.keys(albumsData).length > 0 ? Object.keys(albumsData)[0] : '';
                     }
                     await loadAlbumsAndRender(); // Reload and render all albums
                     showNotification(`Đã xóa album "${albumName}" thành công!`, 'success');
@@ -1114,20 +1151,19 @@
             const albumName = albumSelect.value;
             if (currentCapturedImage && albumName) {
                 setButtonLoading(saveImageBtn, true);
-                // Get current album data from global 'albums' object
-                const albumImages = albums[albumName] || [];
-                albumImages.push(currentCapturedImage);
-
-                const albumData = {
-                    name: albumName,
-                    collapsed: albumCollapseStates[albumName],
-                    images: albumImages
-                };
+                // Get current album data from global 'albumsData' object
+                const albumToUpdate = albumsData[albumName];
+                if (!albumToUpdate) {
+                    showNotification('Album không tồn tại!', 'error');
+                    setButtonLoading(saveImageBtn, false);
+                    return;
+                }
+                albumToUpdate.images.push(currentCapturedImage); // Add image to the album object
 
                 try {
-                    await saveAlbumToDB(albumData);
-                    clearCapturedImage(); // Clear preview after saving
-                    await loadAlbumsAndRender(); // Reload and render all albums
+                    await saveAlbumToDB(albumToUpdate); // Save the updated album object
+                    clearCapturedImage();
+                    await loadAlbumsAndRender();
                     showNotification(`Ảnh đã được lưu vào album "${albumName}"!`, 'success');
                 } catch (e) {
                     showNotification('Lỗi khi lưu ảnh!', 'error');
@@ -1157,9 +1193,7 @@
         // --- Initial Setup ---
         async function loadAlbumsAndRender() {
             try {
-                const data = await getAlbumsFromDB();
-                albums = data.albums;
-                albumCollapseStates = data.collapseStates;
+                albumsData = await getAlbumsFromDB(); // Load all album objects into albumsData
                 renderAlbums();
             } catch (e) {
                 showNotification('Không thể tải album từ cơ sở dữ liệu!', 'error');
