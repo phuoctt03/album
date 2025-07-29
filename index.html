@@ -598,23 +598,152 @@
         const modalImage = document.getElementById('modalImage');
         const modalCloseBtn = imageModal.querySelector('.modal-close-btn');
 
-        let albums = JSON.parse(localStorage.getItem('albums') || '{}');
-        // Store collapse state separately for each album
-        let albumCollapseStates = JSON.parse(localStorage.getItem('albumCollapseStates') || '{}');
+        let db; // IndexedDB database instance
+        let albums = {}; // Global object to hold album data from DB
+        let albumCollapseStates = {}; // Global object to hold collapse states from DB
         let currentCapturedImage = null; // Stores the base64 image data temporarily
+
+        const DB_NAME = 'WebAlbumDB';
+        const DB_VERSION = 1;
+        const STORE_NAME = 'albums';
+
+        // --- IndexedDB Helper Functions ---
+        async function openDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+                request.onupgradeneeded = (event) => {
+                    db = event.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        db.createObjectStore(STORE_NAME, { keyPath: 'name' });
+                    }
+                };
+
+                request.onsuccess = (event) => {
+                    db = event.target.result;
+                    resolve(db);
+                };
+
+                request.onerror = (event) => {
+                    console.error('IndexedDB error:', event.target.errorCode);
+                    showNotification('Lỗi khi mở cơ sở dữ liệu!', 'error');
+                    reject(event.target.error);
+                };
+            });
+        }
+
+        async function getAlbumsFromDB() {
+            return new Promise((resolve, reject) => {
+                if (!db) {
+                    reject('Database not open');
+                    return;
+                }
+                const transaction = db.transaction([STORE_NAME], 'readonly');
+                const store = transaction.objectStore(STORE_NAME);
+                const request = store.getAll();
+
+                request.onsuccess = (event) => {
+                    const fetchedAlbums = {};
+                    const fetchedCollapseStates = {};
+                    event.target.result.forEach(album => {
+                        fetchedAlbums[album.name] = album.images;
+                        fetchedCollapseStates[album.name] = album.collapsed;
+                    });
+                    resolve({ albums: fetchedAlbums, collapseStates: fetchedCollapseStates });
+                };
+
+                request.onerror = (event) => {
+                    console.error('Error getting albums from DB:', event.target.error);
+                    reject(event.target.error);
+                };
+            });
+        }
+
+        async function saveAlbumToDB(albumObject) {
+            return new Promise((resolve, reject) => {
+                if (!db) {
+                    reject('Database not open');
+                    return;
+                }
+                const transaction = db.transaction([STORE_NAME], 'readwrite');
+                const store = transaction.objectStore(STORE_NAME);
+                const request = store.put(albumObject); // put will add or update
+
+                request.onsuccess = () => {
+                    resolve();
+                };
+
+                request.onerror = (event) => {
+                    console.error('Error saving album to DB:', event.target.error);
+                    reject(event.target.error);
+                };
+            });
+        }
+
+        async function deleteAlbumFromDB(albumName) {
+            return new Promise((resolve, reject) => {
+                if (!db) {
+                    reject('Database not open');
+                    return;
+                }
+                const transaction = db.transaction([STORE_NAME], 'readwrite');
+                const store = transaction.objectStore(STORE_NAME);
+                const request = store.delete(albumName);
+
+                request.onsuccess = () => {
+                    resolve();
+                };
+
+                request.onerror = (event) => {
+                    console.error('Error deleting album from DB:', event.target.error);
+                    reject(event.target.error);
+                };
+            });
+        }
+
+        // --- Migration from localStorage to IndexedDB (run once) ---
+        async function migrateLocalStorageToIndexedDB() {
+            const localStorageAlbums = localStorage.getItem('albums');
+            const localStorageCollapseStates = localStorage.getItem('albumCollapseStates');
+
+            if (localStorageAlbums && localStorage.getItem('migratedToIndexedDB') !== 'true') {
+                try {
+                    const oldAlbums = JSON.parse(localStorageAlbums);
+                    const oldCollapseStates = JSON.parse(localStorageCollapseStates || '{}');
+                    
+                    const albumNames = Object.keys(oldAlbums);
+                    if (albumNames.length > 0) {
+                        showNotification('Đang di chuyển dữ liệu cũ sang IndexedDB...', 'info');
+                        for (const name of albumNames) {
+                            const albumData = {
+                                name: name,
+                                collapsed: oldCollapseStates[name] || false,
+                                images: oldAlbums[name]
+                            };
+                            await saveAlbumToDB(albumData);
+                        }
+                        localStorage.setItem('migratedToIndexedDB', 'true');
+                        localStorage.removeItem('albums'); // Clear old localStorage data
+                        localStorage.removeItem('albumCollapseStates'); // Clear old localStorage data
+                        showNotification('Di chuyển dữ liệu thành công!', 'success');
+                    }
+                } catch (e) {
+                    console.error('Lỗi khi di chuyển dữ liệu từ localStorage:', e);
+                    showNotification('Lỗi khi di chuyển dữ liệu cũ!', 'error');
+                }
+            }
+        }
 
         // --- Utility Functions ---
         function setButtonLoading(button, isLoading) {
             if (isLoading) {
                 button.disabled = true;
                 button.classList.add('loading');
-                // Store original HTML to restore later
                 button.dataset.originalHtml = button.innerHTML; 
                 button.innerHTML = '<div class="spinner"></div> Đang xử lý...';
             } else {
                 button.disabled = false;
                 button.classList.remove('loading');
-                // Restore original HTML
                 if (button.dataset.originalHtml) {
                     button.innerHTML = button.dataset.originalHtml;
                     delete button.dataset.originalHtml;
@@ -684,14 +813,15 @@
         function renderAlbums() {
             albumSelect.innerHTML = '';
             albumsGrid.innerHTML = '';
-            noAlbumsMessage.style.display = Object.keys(albums).length === 0 ? 'block' : 'none';
+            const albumNames = Object.keys(albums);
+            noAlbumsMessage.style.display = albumNames.length === 0 ? 'block' : 'none';
 
-            saveImageBtn.disabled = !currentCapturedImage || Object.keys(albums).length === 0;
+            saveImageBtn.disabled = !currentCapturedImage || albumNames.length === 0;
 
             let firstAlbumName = null;
 
-            if (Object.keys(albums).length > 0) {
-                for (const name in albums) {
+            if (albumNames.length > 0) {
+                for (const name of albumNames) {
                     if (firstAlbumName === null) {
                         firstAlbumName = name;
                     }
@@ -753,10 +883,7 @@
                     albumsGrid.appendChild(albumCard);
                 }
             }
-            localStorage.setItem('albums', JSON.stringify(albums));
-            localStorage.setItem('albumCollapseStates', JSON.stringify(albumCollapseStates));
-
-
+            // No localStorage.setItem here, as data is managed by IndexedDB
             // Set selected album to the first one if available and nothing is selected
             if (firstAlbumName && !albumSelect.value) {
                 albumSelect.value = firstAlbumName;
@@ -766,14 +893,14 @@
         }
 
         // --- Event Listeners for Dynamic Elements (Delegation) ---
-        albumsGrid.addEventListener('click', (event) => {
+        albumsGrid.addEventListener('click', async (event) => {
             // Delete Image
             if (event.target.closest('.delete-image-btn')) {
                 const btn = event.target.closest('.delete-image-btn');
                 const albumName = btn.dataset.albumName;
                 const imageIndex = parseInt(btn.dataset.imageIndex);
                 if (confirm(`Bạn có chắc chắn muốn xóa ảnh này khỏi album "${albumName}"?`)) {
-                    deleteImage(albumName, imageIndex);
+                    await deleteImage(albumName, imageIndex);
                 }
             }
             // Delete Album
@@ -781,7 +908,7 @@
                 const btn = event.target.closest('.delete-album-btn');
                 const albumName = btn.dataset.albumName;
                 if (confirm(`Bạn có chắc chắn muốn xóa toàn bộ album "${albumName}"? Thao tác này không thể hoàn tác!`)) {
-                    deleteAlbum(albumName);
+                    await deleteAlbum(albumName);
                 }
             }
             // Open Image Modal
@@ -797,7 +924,19 @@
                 
                 albumCard.classList.toggle('collapsed');
                 albumCollapseStates[albumName] = albumCard.classList.contains('collapsed');
-                localStorage.setItem('albumCollapseStates', JSON.stringify(albumCollapseStates));
+                
+                // Update collapse state in DB
+                const albumData = {
+                    name: albumName,
+                    collapsed: albumCollapseStates[albumName],
+                    images: albums[albumName] // Keep existing images
+                };
+                try {
+                    await saveAlbumToDB(albumData);
+                } catch (e) {
+                    showNotification('Lỗi khi lưu trạng thái thu gọn!', 'error');
+                    console.error('Error saving collapse state:', e);
+                }
             }
         });
 
@@ -836,7 +975,7 @@
             }
         });
 
-        albumsGrid.addEventListener('drop', (e) => {
+        albumsGrid.addEventListener('drop', async (e) => {
             e.preventDefault();
             if (e.target.classList.contains('image-wrapper') && e.target !== dragSrcEl) {
                 e.target.classList.remove('drag-over');
@@ -848,12 +987,23 @@
 
                 // Only allow reordering within the same album
                 if (srcAlbumName === targetAlbumName) {
-                    const album = albums[srcAlbumName];
-                    const [draggedImage] = album.splice(srcIndex, 1); // Remove from source
-                    album.splice(targetIndex, 0, draggedImage); // Insert at target
+                    const albumImages = albums[srcAlbumName];
+                    const [draggedImage] = albumImages.splice(srcIndex, 1); // Remove from source
+                    albumImages.splice(targetIndex, 0, draggedImage); // Insert at target
 
-                    renderAlbums(); // Re-render to reflect new order and update data-image-index
-                    showNotification('Đã sắp xếp ảnh thành công!', 'success');
+                    const albumData = {
+                        name: srcAlbumName,
+                        collapsed: albumCollapseStates[srcAlbumName],
+                        images: albumImages
+                    };
+                    try {
+                        await saveAlbumToDB(albumData);
+                        await loadAlbumsAndRender(); // Re-render to reflect new order and update data-image-index
+                        showNotification('Đã sắp xếp ảnh thành công!', 'success');
+                    } catch (e) {
+                        showNotification('Lỗi khi sắp xếp ảnh!', 'error');
+                        console.error('Error reordering images:', e);
+                    }
                 } else {
                     showNotification('Chỉ có thể sắp xếp ảnh trong cùng một album.', 'error');
                 }
@@ -870,20 +1020,28 @@
 
 
         // --- Album Actions ---
-        createAlbumBtn.onclick = () => {
+        createAlbumBtn.onclick = async () => {
             const name = newAlbumNameInput.value.trim();
             if (name) {
                 if (!albums[name]) {
                     setButtonLoading(createAlbumBtn, true);
-                    setTimeout(() => { // Simulate network request
-                        albums[name] = [];
-                        albumCollapseStates[name] = false; // New album is expanded by default
+                    const newAlbumData = {
+                        name: name,
+                        collapsed: false, // New album is expanded by default
+                        images: []
+                    };
+                    try {
+                        await saveAlbumToDB(newAlbumData);
                         newAlbumNameInput.value = '';
-                        renderAlbums();
+                        await loadAlbumsAndRender(); // Reload and render all albums
                         albumSelect.value = name; // Select the newly created album
                         showNotification(`Đã tạo album "${name}" thành công!`, 'success');
+                    } catch (e) {
+                        showNotification('Lỗi khi tạo album!', 'error');
+                        console.error('Error creating album:', e);
+                    } finally {
                         setButtonLoading(createAlbumBtn, false);
-                    }, 500);
+                    }
                 } else {
                     showNotification('Tên album đã tồn tại! Vui lòng chọn tên khác.', 'error');
                 }
@@ -892,24 +1050,39 @@
             }
         };
 
-        function deleteImage(albumName, imageIndex) {
+        async function deleteImage(albumName, imageIndex) {
             if (albums[albumName] && albums[albumName].length > imageIndex) {
                 albums[albumName].splice(imageIndex, 1);
-                renderAlbums();
-                showNotification('Đã xóa ảnh thành công!', 'success');
+                const albumData = {
+                    name: albumName,
+                    collapsed: albumCollapseStates[albumName],
+                    images: albums[albumName]
+                };
+                try {
+                    await saveAlbumToDB(albumData);
+                    await loadAlbumsAndRender(); // Reload and render all albums
+                    showNotification('Đã xóa ảnh thành công!', 'success');
+                } catch (e) {
+                    showNotification('Lỗi khi xóa ảnh!', 'error');
+                    console.error('Error deleting image:', e);
+                }
             }
         }
 
-        function deleteAlbum(albumName) {
+        async function deleteAlbum(albumName) {
             if (albums[albumName]) {
-                delete albums[albumName];
-                delete albumCollapseStates[albumName]; // Also remove its collapse state
-                // If the deleted album was selected, clear selection or select first available
-                if (albumSelect.value === albumName) {
-                    albumSelect.value = Object.keys(albums).length > 0 ? Object.keys(albums)[0] : '';
+                try {
+                    await deleteAlbumFromDB(albumName);
+                    // If the deleted album was selected, clear selection or select first available
+                    if (albumSelect.value === albumName) {
+                        albumSelect.value = Object.keys(albums).length > 0 ? Object.keys(albums)[0] : '';
+                    }
+                    await loadAlbumsAndRender(); // Reload and render all albums
+                    showNotification(`Đã xóa album "${albumName}" thành công!`, 'success');
+                } catch (e) {
+                    showNotification('Lỗi khi xóa album!', 'error');
+                    console.error('Error deleting album:', e);
                 }
-                renderAlbums();
-                showNotification(`Đã xóa album "${albumName}" thành công!`, 'success');
             }
         }
 
@@ -937,17 +1110,31 @@
             }, 300);
         };
 
-        saveImageBtn.onclick = () => {
+        saveImageBtn.onclick = async () => {
             const albumName = albumSelect.value;
             if (currentCapturedImage && albumName) {
                 setButtonLoading(saveImageBtn, true);
-                setTimeout(() => { // Simulate network request
-                    albums[albumName].push(currentCapturedImage);
+                // Get current album data from global 'albums' object
+                const albumImages = albums[albumName] || [];
+                albumImages.push(currentCapturedImage);
+
+                const albumData = {
+                    name: albumName,
+                    collapsed: albumCollapseStates[albumName],
+                    images: albumImages
+                };
+
+                try {
+                    await saveAlbumToDB(albumData);
                     clearCapturedImage(); // Clear preview after saving
-                    renderAlbums();
+                    await loadAlbumsAndRender(); // Reload and render all albums
                     showNotification(`Ảnh đã được lưu vào album "${albumName}"!`, 'success');
+                } catch (e) {
+                    showNotification('Lỗi khi lưu ảnh!', 'error');
+                    console.error('Error saving image:', e);
+                } finally {
                     setButtonLoading(saveImageBtn, false);
-                }, 500);
+                }
             } else if (!currentCapturedImage) {
                 showNotification('Vui lòng chụp ảnh trước khi lưu!', 'error');
             } else {
@@ -968,8 +1155,22 @@
         }
 
         // --- Initial Setup ---
-        document.addEventListener('DOMContentLoaded', () => {
-            renderAlbums();
+        async function loadAlbumsAndRender() {
+            try {
+                const data = await getAlbumsFromDB();
+                albums = data.albums;
+                albumCollapseStates = data.collapseStates;
+                renderAlbums();
+            } catch (e) {
+                showNotification('Không thể tải album từ cơ sở dữ liệu!', 'error');
+                console.error('Error loading albums on startup:', e);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            await openDB(); // Open database first
+            await migrateLocalStorageToIndexedDB(); // Attempt migration
+            await loadAlbumsAndRender(); // Then load and render albums
             startCamera();
         });
     </script>
