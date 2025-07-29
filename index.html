@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Web Album Chụp Ảnh</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+        }
+
+        video,
+        canvas {
+            max-width: 100%;
+            border: 1px solid #ccc;
+            margin-bottom: 10px;
+        }
+
+        #albums {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .album {
+            border: 1px solid #aaa;
+            padding: 10px;
+            border-radius: 8px;
+            width: 250px;
+        }
+
+        .album h3 {
+            margin: 0 0 10px 0;
+            font-size: 1.1em;
+        }
+
+        .album img {
+            width: 100%;
+            margin-bottom: 5px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>📸 Web Chụp Ảnh & Quản lý Tủ</h1>
+
+    <video id="video" autoplay playsinline width="320" height="240"></video><br>
+    <button id="snap">📷 Chụp ảnh</button>
+    <canvas id="canvas" width="320" height="240" style="display: none;"></canvas>
+
+    <div>
+        <input type="text" id="newAlbumName" placeholder="Tên tủ mới">
+        <button id="createAlbum">➕ Tạo tủ</button>
+    </div>
+
+    <label for="albumSelect">Lưu ảnh vào tủ:</label>
+    <select id="albumSelect"></select>
+
+    <div id="albums"></div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const snapBtn = document.getElementById('snap');
+        const createAlbumBtn = document.getElementById('createAlbum');
+        const albumSelect = document.getElementById('albumSelect');
+        const newAlbumName = document.getElementById('newAlbumName');
+        const albumsDiv = document.getElementById('albums');
+
+        let albums = JSON.parse(localStorage.getItem('albums') || '{}');
+
+        // Start webcam
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+            })
+            .catch(error => {
+                console.error("Error accessing webcam:", error);
+                alert("Không thể truy cập webcam. Vui lòng kiểm tra quyền truy cập.");
+            });
+
+        // Render album dropdown and album view
+        function renderAlbums() {
+            albumSelect.innerHTML = '';
+            albumsDiv.innerHTML = '';
+
+            for (const name in albums) {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                albumSelect.appendChild(option);
+
+                const albumBox = document.createElement('div');
+                albumBox.className = 'album';
+                albumBox.innerHTML = `<h3>${name}</h3>`;
+
+                albums[name].forEach(imgData => {
+                    const img = document.createElement('img');
+                    img.src = imgData;
+                    albumBox.appendChild(img);
+                });
+                albumsDiv.appendChild(albumBox);
+            }
+            localStorage.setItem('albums', JSON.stringify(albums));
+        }
+
+        // Create new album
+        createAlbumBtn.onclick = () => {
+            const name = newAlbumName.value.trim();
+            if (name) {
+                if (!albums[name]) {
+                    albums[name] = [];
+                    newAlbumName.value = '';
+                    renderAlbums();
+                } else {
+                    alert('Tên tủ đã tồn tại!');
+                }
+            } else {
+                alert('Vui lòng nhập tên tủ!');
+            }
+        };
+
+        // Capture photo and save to album
+        snapBtn.onclick = () => {
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = canvas.toDataURL('image/png');
+            const albumName = albumSelect.value;
+
+            if (albumName) {
+                albums[albumName].push(imageData);
+                renderAlbums();
+            } else {
+                alert('Vui lòng chọn tủ để lưu ảnh!');
+            }
+        };
+
+        // Initial render
+        renderAlbums();
+    </script>
+</body>
+</html>
