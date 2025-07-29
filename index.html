@@ -1,64 +1,241 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Web Album Chụp Ảnh</title>
     <style>
         body {
-            font-family: sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
+            background-color: #f4f7f6;
+            color: #333;
+            line-height: 1.6;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 30px;
+            font-size: 2em;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+        @media (min-width: 768px) {
+            .container {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+        .card {
+            background-color: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
             padding: 20px;
         }
-
-        video,
-        canvas {
-            max-width: 100%;
-            border: 1px solid #ccc;
-            margin-bottom: 10px;
+        .card-header {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
+            margin-bottom: 15px;
         }
-
-        #albums {
+        .card-title {
+            font-size: 1.4em;
+            font-weight: 600;
+            color: #34495e;
+        }
+        video, canvas {
+            width: 100%;
+            height: auto;
+            max-width: 320px; /* Keep original max width for video/canvas */
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            display: block; /* Ensure video/canvas takes full width of its container */
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.2s ease;
+            width: 100%;
+            max-width: 200px;
+            margin-left: auto;
+            margin-right: auto;
+            display: block;
+        }
+        .button:hover {
+            background-color: #0056b3;
+        }
+        .button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .input-group {
             display: flex;
             gap: 10px;
-            flex-wrap: wrap;
+            margin-bottom: 15px;
+            align-items: flex-end;
+        }
+        .input-group label {
+            flex-basis: 100%;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+        .input-group input[type="text"],
+        .input-group select {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 1em;
+        }
+        .input-group button {
+            padding: 10px 15px;
+            white-space: nowrap;
+            width: auto;
+            max-width: none;
+            margin: 0;
+        }
+        #albums-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
             margin-top: 20px;
         }
-
-        .album {
-            border: 1px solid #aaa;
-            padding: 10px;
+        .album-card {
+            border: 1px solid #e0e0e0;
+            padding: 15px;
             border-radius: 8px;
-            width: 250px;
+            background-color: #fdfdfd;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.03);
         }
-
-        .album h3 {
+        .album-card h3 {
             margin: 0 0 10px 0;
+            font-size: 1.2em;
+            color: #34495e;
+            border-bottom: 1px solid #f0f0f0;
+            padding-bottom: 8px;
+        }
+        .album-card img {
+            width: 100%;
+            height: auto;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            border: 1px solid #eee;
+            object-fit: cover;
+        }
+        .placeholder-text {
+            text-align: center;
+            color: #888;
+            font-style: italic;
+            padding: 10px;
+        }
+        .captured-image-preview {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .captured-image-preview h2 {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            color: #34495e;
+        }
+        .captured-image-preview img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+        }
+        .loader {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 240px; /* Match video height */
+            background-color: #e9ecef;
+            border-radius: 6px;
+            color: #6c757d;
             font-size: 1.1em;
         }
-
-        .album img {
-            width: 100%;
-            margin-bottom: 5px;
-            border-radius: 4px;
+        .loader::before {
+            content: '';
+            width: 20px;
+            height: 20px;
+            border: 3px solid #6c757d;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .error-message {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            margin-bottom: 15px;
         }
     </style>
 </head>
 <body>
     <h1>📸 Web Chụp Ảnh & Quản lý Tủ</h1>
 
-    <video id="video" autoplay playsinline width="320" height="240"></video><br>
-    <button id="snap">📷 Chụp ảnh</button>
-    <canvas id="canvas" width="320" height="240" style="display: none;"></canvas>
+    <div class="container">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Chụp ảnh mới</h2>
+            </div>
+            <div class="card-content">
+                <div id="camera-feed">
+                    <div class="loader" id="camera-loader">Đang tải camera...</div>
+                    <div class="error-message" id="camera-error" style="display: none;"></div>
+                    <video id="video" autoplay playsinline muted style="display: none;"></video>
+                </div>
+                <button id="snap" class="button">📷 Chụp ảnh</button>
+                <canvas id="canvas" width="320" height="240" style="display: none;"></canvas>
+                <div id="capturedImagePreview" class="captured-image-preview" style="display: none;">
+                    <h2>Ảnh đã chụp:</h2>
+                    <img id="previewImage" src="/placeholder.svg" alt="Ảnh đã chụp">
+                </div>
+            </div>
+        </div>
 
-    <div>
-        <input type="text" id="newAlbumName" placeholder="Tên tủ mới">
-        <button id="createAlbum">➕ Tạo tủ</button>
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Quản lý Tủ Ảnh</h2>
+            </div>
+            <div class="card-content">
+                <div class="input-group">
+                    <label for="newAlbumName">Tạo tủ mới:</label>
+                    <input type="text" id="newAlbumName" placeholder="Tên tủ mới">
+                    <button id="createAlbum" class="button">➕ Tạo tủ</button>
+                </div>
+
+                <div class="input-group">
+                    <label for="albumSelect">Lưu ảnh vào tủ:</label>
+                    <select id="albumSelect"></select>
+                    <button id="saveImage" class="button" disabled>Lưu ảnh</button>
+                </div>
+
+                <div id="albums-grid">
+                    <p class="placeholder-text" id="noAlbumsMessage">Chưa có tủ ảnh nào. Hãy tạo một tủ mới!</p>
+                </div>
+            </div>
+        </div>
     </div>
-
-    <label for="albumSelect">Lưu ảnh vào tủ:</label>
-    <select id="albumSelect"></select>
-
-    <div id="albums"></div>
 
     <script>
         const video = document.getElementById('video');
@@ -66,54 +243,114 @@
         const snapBtn = document.getElementById('snap');
         const createAlbumBtn = document.getElementById('createAlbum');
         const albumSelect = document.getElementById('albumSelect');
-        const newAlbumName = document.getElementById('newAlbumName');
-        const albumsDiv = document.getElementById('albums');
+        const newAlbumNameInput = document.getElementById('newAlbumName');
+        const albumsGrid = document.getElementById('albums-grid');
+        const saveImageBtn = document.getElementById('saveImage');
+        const capturedImagePreviewDiv = document.getElementById('capturedImagePreview');
+        const previewImage = document.getElementById('previewImage');
+        const cameraLoader = document.getElementById('camera-loader');
+        const cameraError = document.getElementById('camera-error');
+        const noAlbumsMessage = document.getElementById('noAlbumsMessage');
 
         let albums = JSON.parse(localStorage.getItem('albums') || '{}');
+        let currentCapturedImage = null; // Stores the base64 image data temporarily
 
-        // Start webcam
-        navigator.mediaDevices.getUserMedia({ video: true })
-            .then(stream => {
+        // Function to start webcam with preferred facing mode
+        async function startCamera(facingMode = 'environment') {
+            cameraLoader.style.display = 'flex';
+            cameraError.style.display = 'none';
+            video.style.display = 'none';
+            snapBtn.disabled = true;
+
+            try {
+                const constraints = {
+                    video: facingMode ? { facingMode: facingMode } : true
+                };
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = stream;
-            })
-            .catch(error => {
-                console.error("Error accessing webcam:", error);
-                alert("Không thể truy cập webcam. Vui lòng kiểm tra quyền truy cập.");
-            });
+                video.play();
+                video.style.display = 'block';
+                cameraLoader.style.display = 'none';
+                snapBtn.disabled = false;
+                // Mirror the video for a more natural "selfie" feel, common for front cameras.
+                // If you strictly want the rear camera view without mirroring, remove this line.
+                video.style.transform = 'scaleX(-1)';
+            } catch (error) {
+                console.error(`Error accessing webcam with facingMode: ${facingMode}`, error);
+                if (facingMode === 'environment') {
+                    // Fallback to user camera if environment fails
+                    startCamera('user');
+                } else if (facingMode === 'user') {
+                    // Fallback to any camera if user camera fails
+                    startCamera(undefined); // This means video: true
+                } else {
+                    cameraLoader.style.display = 'none';
+                    cameraError.style.display = 'block';
+                    cameraError.textContent = "Không thể truy cập webcam. Vui lòng kiểm tra quyền truy cập hoặc thiết bị không có camera.";
+                    snapBtn.disabled = true;
+                }
+            }
+        }
 
         // Render album dropdown and album view
         function renderAlbums() {
             albumSelect.innerHTML = '';
-            albumsDiv.innerHTML = '';
+            albumsGrid.innerHTML = '';
+            noAlbumsMessage.style.display = Object.keys(albums).length === 0 ? 'block' : 'none';
+
+            if (Object.keys(albums).length === 0) {
+                saveImageBtn.disabled = true; // Disable save button if no albums
+            }
+
+            let firstAlbumName = null;
 
             for (const name in albums) {
+                if (firstAlbumName === null) {
+                    firstAlbumName = name;
+                }
                 const option = document.createElement('option');
                 option.value = name;
                 option.textContent = name;
                 albumSelect.appendChild(option);
 
                 const albumBox = document.createElement('div');
-                albumBox.className = 'album';
+                albumBox.className = 'album-card';
                 albumBox.innerHTML = `<h3>${name}</h3>`;
-
-                albums[name].forEach(imgData => {
-                    const img = document.createElement('img');
-                    img.src = imgData;
-                    albumBox.appendChild(img);
-                });
-                albumsDiv.appendChild(albumBox);
+                if (albums[name].length === 0) {
+                    const noPhotosText = document.createElement('p');
+                    noPhotosText.className = 'placeholder-text';
+                    noPhotosText.textContent = 'Chưa có ảnh nào trong tủ này.';
+                    albumBox.appendChild(noPhotosText);
+                } else {
+                    albums[name].forEach(imgData => {
+                        const img = document.createElement('img');
+                        img.src = imgData;
+                        albumBox.appendChild(img);
+                    });
+                }
+                albumsGrid.appendChild(albumBox);
             }
             localStorage.setItem('albums', JSON.stringify(albums));
+
+            // Set selected album to the first one if available and nothing is selected
+            if (firstAlbumName && !albumSelect.value) {
+                albumSelect.value = firstAlbumName;
+            }
+            // Re-enable save button if there are albums and an image is captured
+            if (Object.keys(albums).length > 0 && currentCapturedImage) {
+                saveImageBtn.disabled = false;
+            }
         }
 
         // Create new album
         createAlbumBtn.onclick = () => {
-            const name = newAlbumName.value.trim();
+            const name = newAlbumNameInput.value.trim();
             if (name) {
                 if (!albums[name]) {
                     albums[name] = [];
-                    newAlbumName.value = '';
+                    newAlbumNameInput.value = '';
                     renderAlbums();
+                    albumSelect.value = name; // Select the newly created album
                 } else {
                     alert('Tên tủ đã tồn tại!');
                 }
@@ -122,23 +359,50 @@
             }
         };
 
-        // Capture photo and save to album
+        // Capture photo and display preview
         snapBtn.onclick = () => {
+            if (!video.srcObject) {
+                alert("Camera chưa sẵn sàng. Vui lòng đợi hoặc kiểm tra quyền truy cập.");
+                return;
+            }
             const ctx = canvas.getContext('2d');
+            // Set canvas dimensions to match video stream
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             const imageData = canvas.toDataURL('image/png');
-            const albumName = albumSelect.value;
+            currentCapturedImage = imageData; // Store the captured image
+            previewImage.src = imageData;
+            capturedImagePreviewDiv.style.display = 'block';
+            
+            // Enable save button if an album is selected
+            if (albumSelect.value) {
+                saveImageBtn.disabled = false;
+            }
+        };
 
-            if (albumName) {
-                albums[albumName].push(imageData);
+        // Save captured photo to selected album
+        saveImageBtn.onclick = () => {
+            const albumName = albumSelect.value;
+            if (currentCapturedImage && albumName) {
+                albums[albumName].push(currentCapturedImage);
+                currentCapturedImage = null; // Clear captured image after saving
+                previewImage.src = ''; // Clear preview image
+                capturedImagePreviewDiv.style.display = 'none'; // Hide preview
+                saveImageBtn.disabled = true; // Disable save button
                 renderAlbums();
+            } else if (!currentCapturedImage) {
+                alert('Vui lòng chụp ảnh trước khi lưu!');
             } else {
                 alert('Vui lòng chọn tủ để lưu ảnh!');
             }
         };
 
-        // Initial render
-        renderAlbums();
+        // Initial render and camera start
+        document.addEventListener('DOMContentLoaded', () => {
+            renderAlbums();
+            startCamera();
+        });
     </script>
 </body>
 </html>
