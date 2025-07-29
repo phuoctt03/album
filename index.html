@@ -192,6 +192,10 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            transition: border-color 0.3s ease; /* Added for collapsed state */
+        }
+        .album-card.collapsed {
+            border-color: #a0d9ff; /* Lighter blue border when collapsed */
         }
         .album-card .album-header-row {
             display: flex;
@@ -212,7 +216,7 @@
         .album-card .toggle-collapse-btn {
             background: none;
             border: none;
-            cursor: pointer;
+            cursor: pointer; /* Added cursor pointer */
             padding: 5px;
             border-radius: 50%;
             transition: background-color 0.2s ease, transform 0.2s ease;
@@ -234,7 +238,7 @@
         .album-card .album-content {
             width: 100%;
             overflow: hidden;
-            transition: max-height 0.3s ease-out, opacity 0.3s ease-out;
+            transition: max-height 0.5s ease-out, opacity 0.5s ease-out; /* Increased duration */
             max-height: 1000px; /* Max height for expanded state */
             opacity: 1;
         }
@@ -601,16 +605,17 @@
             if (isLoading) {
                 button.disabled = true;
                 button.classList.add('loading');
+                // Store original HTML to restore later
+                button.dataset.originalHtml = button.innerHTML; 
                 button.innerHTML = '<div class="spinner"></div> Đang xử lý...';
             } else {
                 button.disabled = false;
                 button.classList.remove('loading');
-                // Restore original content based on button ID
-                if (button.id === 'snap') button.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg> Chụp ảnh';
-                if (button.id === 'retryCamera') button.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"></path></svg> Thử lại Camera';
-                if (button.id === 'saveImage') button.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg> Lưu ảnh';
-                if (button.id === 'createAlbum') button.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Tạo album';
-                if (button.id === 'clearCapturedImage') button.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg> Xóa ảnh đã chụp';
+                // Restore original HTML
+                if (button.dataset.originalHtml) {
+                    button.innerHTML = button.dataset.originalHtml;
+                    delete button.dataset.originalHtml;
+                }
             }
         }
 
