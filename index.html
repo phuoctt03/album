@@ -185,17 +185,18 @@
         .album-card {
             border: 1px solid #e0e0e0;
             padding: 20px;
-            border-radius: 12px;
+            border-radius: 16px; /* Increased border-radius for a softer look */
             background-color: #fdfdfd;
             box-shadow: 0 3px 10px rgba(0,0,0,0.05);
             position: relative;
             display: flex;
             flex-direction: column;
             align-items: center;
-            transition: border-color 0.3s ease; /* Added for collapsed state */
+            transition: border-color 0.3s ease, box-shadow 0.3s ease; /* Added for collapsed state */
         }
         .album-card.collapsed {
             border-color: #a0d9ff; /* Lighter blue border when collapsed */
+            box-shadow: 0 2px 8px rgba(0,123,255,0.15); /* Subtle blue shadow when collapsed */
         }
         .album-card .album-header-row {
             display: flex;
@@ -216,7 +217,7 @@
         .album-card .toggle-collapse-btn {
             background: none;
             border: none;
-            cursor: pointer; /* Added cursor pointer */
+            cursor: pointer;
             padding: 5px;
             border-radius: 50%;
             transition: background-color 0.2s ease, transform 0.2s ease;
@@ -235,20 +236,21 @@
             transform: rotate(-90deg); /* Rotate down when collapsed */
         }
 
-        .album-card .album-content {
+        /* New: Album Body for Collapse */
+        .album-card .album-body {
             width: 100%;
             overflow: hidden;
-            transition: max-height 0.5s ease-out, opacity 0.5s ease-out; /* Increased duration */
-            max-height: 1000px; /* Max height for expanded state */
+            transition: max-height 0.5s ease-out, opacity 0.5s ease-out, margin-top 0.5s ease-out;
+            max-height: 9999px; /* Set to a very large value for expanded state */
             opacity: 1;
+            margin-top: 0;
         }
-        .album-card.collapsed .album-content {
+        .album-card.collapsed .album-body {
             max-height: 0;
             opacity: 0;
+            margin-top: -20px; /* Adjust to pull content up, compensating for padding */
             padding-top: 0;
             padding-bottom: 0;
-            margin-top: 0;
-            margin-bottom: 0;
         }
 
         .album-card .image-wrapper {
@@ -561,6 +563,7 @@
             <img id="modalImage" src="/placeholder.svg" alt="Ảnh xem trước">
         </div>
     </div>
+
     <script>
         // Service Worker registration
         if ('serviceWorker' in navigator) {
@@ -718,7 +721,9 @@
                             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
                             Xóa album
                         </button>
-                        <div class="album-content">
+                        <div class="album-body"> <!-- New wrapper for collapsable content -->
+                            <div class="album-content">
+                            </div>
                         </div>
                     `;
                     const albumContentDiv = albumCard.querySelector('.album-content');
