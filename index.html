@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web Album</title>
+    <title>Web Album Chụp Ảnh</title>
     <style>
         /* General Styles */
         body {
@@ -60,7 +60,7 @@
             text-align: center;
         }
         .card-title {
-            font-size: 1.8em;
+            font-size: 1.6em;
             font-weight: 600;
             color: #34495e;
         }
@@ -191,15 +191,60 @@
             flex-direction: column;
             align-items: center;
         }
-        .album-card h3 {
-            margin: 0 0 15px 0;
-            font-size: 1.4em;
-            color: #34495e;
+        .album-card .album-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            margin-bottom: 15px;
             border-bottom: 1px solid #f0f0f0;
             padding-bottom: 10px;
-            width: 100%;
-            text-align: center;
         }
+        .album-card h3 {
+            margin: 0;
+            font-size: 1.4em;
+            color: #34495e;
+            flex-grow: 1;
+            text-align: left;
+        }
+        .album-card .toggle-collapse-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 50%;
+            transition: background-color 0.2s ease, transform 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+        }
+        .album-card .toggle-collapse-btn:hover {
+            background-color: #f0f0f0;
+        }
+        .album-card .toggle-collapse-btn svg {
+            transition: transform 0.2s ease;
+        }
+        .album-card.collapsed .toggle-collapse-btn svg {
+            transform: rotate(-90deg); /* Rotate down when collapsed */
+        }
+
+        .album-card .album-content {
+            width: 100%;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, opacity 0.3s ease-out;
+            max-height: 1000px; /* Max height for expanded state */
+            opacity: 1;
+        }
+        .album-card.collapsed .album-content {
+            max-height: 0;
+            opacity: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+            margin-top: 0;
+            margin-bottom: 0;
+        }
+
         .album-card .image-wrapper {
             position: relative;
             width: 100%;
@@ -422,15 +467,15 @@
 
         /* SVG Icons */
         .icon {
-            width: 1em;
-            height: 1em;
+            width: 1.2em; /* Slightly larger icons */
+            height: 1.2em;
             vertical-align: middle;
             fill: currentColor;
         }
     </style>
 </head>
 <body>
-    <h1>📸 Quản lý album</h1>
+    <h1>📸 Web Chụp Ảnh & Quản lý Album</h1>
 
     <div class="container">
         <div class="card">
@@ -477,7 +522,7 @@
 
         <div class="card">
             <div class="card-header">
-                <h2 class="card-title">Quản lý Album Ảnh</h2>
+                <h2 class="card-title">Quản lý Album</h2>
             </div>
             <div class="card-content" style="width: 100%;">
                 <div class="input-group">
@@ -495,7 +540,7 @@
                 </div>
 
                 <div id="albums-grid">
-                    <p class="placeholder-text" id="noAlbumsMessage">Chưa có album ảnh nào. Hãy tạo một album mới!</p>
+                    <p class="placeholder-text" id="noAlbumsMessage">Chưa có album nào. Hãy tạo một album mới!</p>
                 </div>
             </div>
         </div>
@@ -534,6 +579,8 @@
         const modalCloseBtn = imageModal.querySelector('.modal-close-btn');
 
         let albums = JSON.parse(localStorage.getItem('albums') || '{}');
+        // Store collapse state separately for each album
+        let albumCollapseStates = JSON.parse(localStorage.getItem('albumCollapseStates') || '{}');
         let currentCapturedImage = null; // Stores the base64 image data temporarily
 
         // --- Utility Functions ---
@@ -636,19 +683,33 @@
                     albumCard.className = 'album-card';
                     albumCard.dataset.albumName = name; // Store album name for deletion
 
+                    // Check collapse state, default to expanded if not set
+                    const isCollapsed = albumCollapseStates[name] === true;
+                    if (isCollapsed) {
+                        albumCard.classList.add('collapsed');
+                    }
+
                     albumCard.innerHTML = `
-                        <h3>${name}</h3>
+                        <div class="album-header-row">
+                            <h3>${name}</h3>
+                            <button class="toggle-collapse-btn" data-album-name="${name}">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </button>
+                        </div>
                         <button class="delete-album-btn" data-album-name="${name}">
                             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
                             Xóa album
                         </button>
+                        <div class="album-content">
+                        </div>
                     `;
+                    const albumContentDiv = albumCard.querySelector('.album-content');
 
                     if (albums[name].length === 0) {
                         const noPhotosText = document.createElement('p');
                         noPhotosText.className = 'placeholder-text';
                         noPhotosText.textContent = 'Chưa có ảnh nào trong album này.';
-                        albumCard.appendChild(noPhotosText);
+                        albumContentDiv.appendChild(noPhotosText);
                     } else {
                         albums[name].forEach((imgData, index) => {
                             const imageWrapper = document.createElement('div');
@@ -663,13 +724,15 @@
                                     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
                                 </button>
                             `;
-                            albumCard.appendChild(imageWrapper);
+                            albumContentDiv.appendChild(imageWrapper);
                         });
                     }
                     albumsGrid.appendChild(albumCard);
                 }
             }
             localStorage.setItem('albums', JSON.stringify(albums));
+            localStorage.setItem('albumCollapseStates', JSON.stringify(albumCollapseStates));
+
 
             // Set selected album to the first one if available and nothing is selected
             if (firstAlbumName && !albumSelect.value) {
@@ -702,6 +765,16 @@
             if (event.target.tagName === 'IMG' && event.target.closest('.album-card')) {
                 modalImage.src = event.target.src;
                 imageModal.classList.add('show');
+            }
+            // Toggle Collapse
+            if (event.target.closest('.toggle-collapse-btn')) {
+                const btn = event.target.closest('.toggle-collapse-btn');
+                const albumName = btn.dataset.albumName;
+                const albumCard = btn.closest('.album-card');
+                
+                albumCard.classList.toggle('collapsed');
+                albumCollapseStates[albumName] = albumCard.classList.contains('collapsed');
+                localStorage.setItem('albumCollapseStates', JSON.stringify(albumCollapseStates));
             }
         });
 
@@ -781,6 +854,7 @@
                     setButtonLoading(createAlbumBtn, true);
                     setTimeout(() => { // Simulate network request
                         albums[name] = [];
+                        albumCollapseStates[name] = false; // New album is expanded by default
                         newAlbumNameInput.value = '';
                         renderAlbums();
                         albumSelect.value = name; // Select the newly created album
@@ -806,6 +880,7 @@
         function deleteAlbum(albumName) {
             if (albums[albumName]) {
                 delete albums[albumName];
+                delete albumCollapseStates[albumName]; // Also remove its collapse state
                 // If the deleted album was selected, clear selection or select first available
                 if (albumSelect.value === albumName) {
                     albumSelect.value = Object.keys(albums).length > 0 ? Object.keys(albums)[0] : '';
