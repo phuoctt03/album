@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1976d2">
     <title>Web Album Chụp Ảnh</title>
     <style>
         /* General Styles */
@@ -555,7 +557,25 @@
             <img id="modalImage" src="/placeholder.svg" alt="Ảnh xem trước">
         </div>
     </div>
+    <script>
+        // Service Worker registration
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/calendar/service-worker.js')
+                .then(function (registration) {
+                    console.log('Service Worker registered with scope:', registration.scope);
+                })
+                .catch(function (error) {
+                    console.log('Service Worker registration failed:', error);
+                });
 
+            navigator.serviceWorker.register('/calendar/sw.js')
+                .then(function(registration) {
+                    console.log('SW registered:', registration);
+                  }).catch(function(error) {
+                    console.error('SW registration failed:', error);
+                  });
+        }
+    </script>
     <script>
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
